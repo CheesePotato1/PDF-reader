@@ -1,0 +1,84 @@
+import streamlit as st
+import pdfplumber
+from pathlib import Path
+
+def load_pdf_list():
+    folder = Path.home() / "Downloads" / "Oncology protocols"
+    pdfs = [f.name for f in folder.glob("BRS*.pdf")]
+    pdfs.sort()
+    return pdfs
+
+def extract_summary(text):
+    summary = []
+    key_terms = ["PURPOSE:", "OBJECTIVE:", "ELIGIBILITY:", "TREATMENT:", "CRITERIA:"]
+    
+    for term in key_terms:
+        if term in text:
+            start = text.find(term)
+            end = text.find("\n", start)
+            if end == -1:  # If no newline found, take next 200 characters
+                summary.append(text[start:start+200])
+            else:
+                summary.append(text[start:end])
+    
+    return "\n\n".join(summary)
+
+def main():
+    st.set_page_config(page_title="BRS Protocol Viewer", layout="wide")
+    
+    # Title
+    st.title("BRS Protocol Viewer")
+    
+    # Sidebar for protocol selection
+    with st.sidebar:
+        st.header("Protocol Selection")
+        pdfs = load_pdf_list()
+        selected_pdf = st.selectbox("Choose a protocol:", pdfs)
+        
+        if selected_pdf:
+            pdf_path = Path.home() / "Downloads" / "Oncology protocols" / selected_pdf
+            
+            try:
+                with pdfplumber.open(str(pdf_path)) as pdf:
+                    total_pages = len(pdf.pages)
+                    page_num = st.number_input("Page", min_value=1, max_value=total_pages, value=1)
+                    
+                    # Navigation buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("← Previous") and page_num > 1:
+                            page_num -= 1
+                    with col2:
+                        if st.button("Next →") and page_num < total_pages:
+                            page_num += 1
+                    
+                    st.write(f"Total Pages: {total_pages}")
+    
+    # Main content area
+    if selected_pdf:
+        try:
+            with pdfplumber.open(str(pdf_path)) as pdf:
+                # Create two columns
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.header("Summary")
+                    # Extract and display summary from first page
+                    first_page = pdf.pages[0].extract_text()
+                    summary = extract_summary(first_page)
+                    st.text_area("Key Information", summary, height=400)
+                
+                with col2:
+                    st.header(f"Page {page_num} Content")
+                    # Display current page content
+                    page = pdf.pages[page_num-1]
+                    content = page.extract_text()
+                    st.text_area("Full Content", content, height=600)
+                
+        except Exception as e:
+            st.error(f"Error reading PDF: {str(e)}")
+    else:
+        st.info("Please select a protocol from the sidebar")
+
+if __name__ == "__main__":
+    main()
